@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VoiceNotes</title>
+  <meta name="description" content="A minimalist offline audio journal. Record, play back, and manage voice memos — all stored locally on your device." />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#c43e2e" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#17181a" media="(prefers-color-scheme: dark)" />
+
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="VoiceNotes" />
+
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <h1 class="app-header__title">VoiceNotes</h1>
+      <p class="app-header__privacy">Stored only on this device</p>
+    </header>
+
+    <!-- ============ HOME VIEW ============ -->
+    <main id="home-view" class="home-view">
+      <section class="record-zone">
+        <button id="record-btn" class="record-btn" type="button" aria-label="Start recording a voice note">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z" fill="currentColor"/>
+            <path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <span id="record-btn-label" class="record-btn-label">Tap to record</span>
+      </section>
+
+      <section class="recordings-section" aria-labelledby="recordings-heading">
+        <h2 id="recordings-heading" class="recordings-section__heading">Your recordings</h2>
+        <ul id="recordings-list" class="recordings-list">
+          <!-- populated by js/app.js -->
+        </ul>
+      </section>
+    </main>
+
+    <!-- ============ RECORDING (ACTIVE) VIEW ============ -->
+    <section id="recording-view" class="recording-view" hidden aria-label="Recording in progress">
+      <div class="recording-view__status" role="status">
+        <span class="rec-dot" aria-hidden="true"></span>
+        <span>Recording</span>
+      </div>
+
+      <div id="recording-timer" class="recording-timer" aria-live="off">0:00</div>
+
+      <div class="waveform-wrap">
+        <canvas id="waveform-canvas" aria-hidden="true"></canvas>
+      </div>
+
+      <p id="recording-error" class="recording-error" role="alert" hidden></p>
+
+      <div class="recording-controls">
+        <button id="stop-btn" class="stop-btn" type="button" aria-label="Stop and save recording">
+          <span class="stop-btn__square" aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <button id="cancel-btn" class="cancel-btn" type="button">Discard recording</button>
+    </section>
+  </div>
+
+  <!-- Delete confirmation dialog -->
+  <dialog id="confirm-dialog">
+    <p class="dialog__message" data-role="confirm-message">Delete this recording?</p>
+    <div class="dialog__actions">
+      <button type="button" class="btn" data-action="confirm-no">Cancel</button>
+      <button type="button" class="btn btn--danger" data-action="confirm-yes">Delete</button>
+    </div>
+  </dialog>
+
+  <!-- Name / rename recording dialog -->
+  <dialog id="name-dialog">
+    <p class="dialog__message" data-role="name-heading">Name this recording</p>
+    <input
+      type="text"
+      class="name-input"
+      data-role="name-input"
+      maxlength="80"
+      autocomplete="off"
+      aria-label="Recording name"
+    />
+    <div class="dialog__actions">
+      <button type="button" class="btn" data-action="name-cancel">Cancel</button>
+      <button type="button" class="btn btn--primary" data-action="name-save">Save</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
