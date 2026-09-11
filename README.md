@@ -167,4 +167,4 @@ gracefully — it never shows a control that doesn't work.
 - The microphone is only accessed after you tap the record button, never
   on page load.
 - No accounts, cookies, analytics, or third-party scripts.
-- Deleting a recording removes it permanently from IndexedDB.
+- Deleting a recording removes it permanently from IndexedDB. 
