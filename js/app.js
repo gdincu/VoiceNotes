@@ -180,6 +180,7 @@ async function loadRecordings() {
     onSeek: handleSeek,
     onRename: handleRename,
     onShare: handleShare,
+    onDownload: handleDownload,
     onDeleteRequest: handleDeleteRequest,
   };
 
@@ -273,18 +274,33 @@ async function handleRename(record, li) {
   }
 }
 
+function handleDownload(record) {
+  try {
+    downloadRecording(record);
+    showToast('Recording downloaded.');
+  } catch (err) {
+    console.error(err);
+    showToast('Could not download the recording.', { isError: true });
+  }
+}
+
 async function handleShare(record) {
   try {
     const result = await shareRecording(record);
-    if (result === 'shared') showToast('Recording shared.');
+    if (result === 'shared') {
+      showToast('Recording shared.');
+    }
   } catch (err) {
-    if (err && err.name === 'NotSupportedError') {
-      // Graceful fallback: export/download instead of pretending to share.
+    if (err && err.name === 'AbortError') {
+      return; // user dismissed the share sheet
+    }
+    console.warn('Web Share failed, falling back to download:', err);
+    try {
       downloadRecording(record);
-      showToast('Sharing isn\u2019t supported here — downloaded instead.');
-    } else {
-      console.error(err);
-      showToast('Could not share the recording.', { isError: true });
+      showToast('Sharing isn\u2019t available here — downloaded file instead.');
+    } catch (downloadErr) {
+      console.error(downloadErr);
+      showToast('Could not share or download the recording.', { isError: true });
     }
   }
 }

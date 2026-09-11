@@ -44,8 +44,12 @@ export function renderRecordingItem(record, handlers) {
         <button type="button" class="icon-btn" data-action="rename" aria-label="Rename recording" title="Rename">
           ${icon('edit')}
         </button>
-        <button type="button" class="icon-btn" data-action="share" aria-label="${canShareFile ? 'Share recording' : 'Download recording'}" title="${canShareFile ? 'Share' : 'Download'}">
-          ${canShareFile ? icon('share') : icon('download')}
+        ${canShareFile ? `
+        <button type="button" class="icon-btn" data-action="share" aria-label="Share recording" title="Share">
+          ${icon('share')}
+        </button>` : ''}
+        <button type="button" class="icon-btn" data-action="download" aria-label="Download recording" title="Download">
+          ${icon('download')}
         </button>
         <button type="button" class="icon-btn icon-btn--danger" data-action="delete" aria-label="Delete recording" title="Delete">
           ${icon('trash')}
@@ -72,13 +76,15 @@ export function renderRecordingItem(record, handlers) {
   const currentTimeEl = li.querySelector('[data-role="current-time"]');
   const renameBtn = li.querySelector('[data-action="rename"]');
   const shareBtn = li.querySelector('[data-action="share"]');
+  const downloadBtn = li.querySelector('[data-action="download"]');
   const deleteBtn = li.querySelector('[data-action="delete"]');
   const meta = li.querySelector('[data-role="meta"]');
 
   playBtn.addEventListener('click', () => handlers.onTogglePlay(record, li));
   progress.addEventListener('input', () => handlers.onSeek(record, li, Number(progress.value)));
   renameBtn.addEventListener('click', () => handlers.onRename(record, li));
-  shareBtn.addEventListener('click', () => handlers.onShare(record));
+  if (shareBtn) shareBtn.addEventListener('click', () => handlers.onShare(record));
+  if (downloadBtn) downloadBtn.addEventListener('click', () => handlers.onDownload(record));
   deleteBtn.addEventListener('click', () => handlers.onDeleteRequest(record, li));
 
   li._els = { playBtn, progress, currentTimeEl, meta };

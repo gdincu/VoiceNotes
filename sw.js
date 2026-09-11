@@ -2,7 +2,7 @@
 // Recordings themselves live in IndexedDB (see js/db.js), never in this
 // cache — this worker is only responsible for the static UI shell.
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `voicenotes-shell-${CACHE_VERSION}`;
 
 const SHELL_ASSETS = [

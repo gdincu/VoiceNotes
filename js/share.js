@@ -2,20 +2,53 @@
 // Uses navigator.share()/navigator.canShare() when available for real file
 // sharing, and always offers a plain download fallback.
 
-function extensionForMime(mimeType) {
+export function getCleanMimeType(record = {}) {
+  const raw = record.mimeType || (record.blob && record.blob.type) || 'audio/webm';
+  // Strip codec parameters (e.g. "audio/webm;codecs=opus" -> "audio/webm")
+  // because OS share targets and MIME validators require clean media types.
+  const clean = String(raw).split(';')[0].trim().toLowerCase();
+  return clean || 'audio/webm';
+}
+
+export function extensionForMime(mimeType) {
   if (!mimeType) return 'webm';
-  if (mimeType.includes('mp4')) return 'm4a';
-  if (mimeType.includes('mpeg')) return 'mp3';
-  if (mimeType.includes('ogg')) return 'ogg';
+  const clean = String(mimeType).split(';')[0].trim().toLowerCase();
+  if (clean.includes('mp4') || clean.includes('m4a')) return 'm4a';
+  if (clean.includes('aac')) return 'aac';
+  if (clean.includes('mpeg') || clean.includes('mp3')) return 'mp3';
+  if (clean.includes('ogg')) return 'ogg';
+  if (clean.includes('wav')) return 'wav';
+  if (clean.includes('flac')) return 'flac';
   return 'webm';
 }
 
-function fileNameFor(record) {
-  const date = new Date(record.createdAt);
-  const stamp = date.toISOString().replace(/[:.]/g, '-');
-  const title = record.title ? record.title.replace(/[^a-z0-9-_ ]/gi, '').trim() : '';
+export function fileNameFor(record = {}) {
+  let stamp;
+  try {
+    const createdAt = record.createdAt;
+    const date = createdAt ? new Date(createdAt) : new Date();
+    stamp = Number.isNaN(date.getTime())
+      ? String(Date.now())
+      : date.toISOString().replace(/[:.]/g, '-');
+  } catch {
+    stamp = String(Date.now());
+  }
+
+  // Preserve unicode characters while sanitizing characters invalid in filenames
+  const title = record.title ? String(record.title).replace(/[\\/:*?"<>|]/g, '_').trim() : '';
   const base = title || `voicenote-${stamp}`;
-  return `${base}.${extensionForMime(record.mimeType)}`;
+  const ext = extensionForMime(getCleanMimeType(record));
+  return `${base}.${ext}`;
+}
+
+export function createShareableFile(record) {
+  if (!record || !record.blob) {
+    throw new Error('Invalid recording: missing blob data.');
+  }
+  const cleanMime = getCleanMimeType(record);
+  const name = fileNameFor(record);
+  const lastModified = Number.isFinite(record.createdAt) ? record.createdAt : Date.now();
+  return new File([record.blob], name, { type: cleanMime, lastModified });
 }
 
 /**
@@ -23,10 +56,13 @@ function fileNameFor(record) {
  * We never claim support the platform doesn't have.
  */
 export function isFileShareSupported(record) {
+  if (typeof navigator === 'undefined') return false;
   if (typeof navigator.share !== 'function') return false;
   if (typeof navigator.canShare !== 'function') return false;
   try {
-    const file = new File([record.blob], fileNameFor(record), { type: record.mimeType });
+    const file = record && record.blob
+      ? createShareableFile(record)
+      : new File([''], 'test.webm', { type: 'audio/webm' });
     return navigator.canShare({ files: [file] });
   } catch {
     return false;
@@ -39,7 +75,11 @@ export function isFileShareSupported(record) {
  * @returns {Promise<'shared'|'cancelled'>}
  */
 export async function shareRecording(record) {
-  const file = new File([record.blob], fileNameFor(record), { type: record.mimeType });
+  if (!record || !record.blob) {
+    throw new Error('No recording data available to share.');
+  }
+
+  const file = createShareableFile(record);
 
   if (!isFileShareSupported(record)) {
     throw Object.assign(new Error('Sharing files is not supported on this device.'), {
@@ -65,6 +105,9 @@ export async function shareRecording(record) {
  * @param {{blob:Blob, mimeType:string, createdAt:number, title?:string}} record
  */
 export function downloadRecording(record) {
+  if (!record || !record.blob) {
+    throw new Error('Cannot download empty recording.');
+  }
   const url = URL.createObjectURL(record.blob);
   const a = document.createElement('a');
   a.href = url;
