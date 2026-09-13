@@ -22,7 +22,6 @@ const els = {
   stopBtn: document.getElementById('stop-btn'),
   cancelBtn: document.getElementById('cancel-btn'),
   list: document.getElementById('recordings-list'),
-  recordingError: document.getElementById('recording-error'),
 };
 
 const state = {
@@ -44,9 +43,6 @@ async function startRecording() {
   // Guards against a rapid double-tap starting a second recording while the
   // first getUserMedia() request is still pending.
   if (state.recorder.isRecording || state.startInFlight) return;
-
-  els.recordingError.hidden = true;
-  els.recordingError.textContent = '';
 
   if (!isRecordingSupported()) {
     showToast('Recording is not supported in this browser.', { isError: true });
@@ -127,8 +123,8 @@ function cancelRecording() {
 function enterRecordingView() {
   els.homeView.hidden = true;
   els.recordingView.hidden = false;
-  document.body.classList.add('is-recording');
   els.timer.textContent = '0:00';
+  els.stopBtn.focus();
 }
 
 function teardownRecordingView() {
@@ -137,7 +133,7 @@ function teardownRecordingView() {
   }
   els.homeView.hidden = false;
   els.recordingView.hidden = true;
-  document.body.classList.remove('is-recording');
+  els.recordBtn.focus();
 }
 
 // Guard against the user leaving mid-recording: stop cleanly instead of
@@ -147,15 +143,20 @@ window.addEventListener('beforeunload', () => {
     state.recorder.cancel();
   }
 });
-document.addEventListener('visibilitychange', () => {
-  // Recording continues in the background on most platforms; we only need
-  // to make sure the waveform loop doesn't burn cycles when hidden. The
-  // rAF loop already throttles itself in background tabs by default.
-});
 
 // ---------------------------------------------------------------------------
 // Recordings list
 // ---------------------------------------------------------------------------
+
+function revokeListObjectURLs() {
+  for (const li of els.list.children) {
+    if (li._els && li._els.objectUrl) {
+      URL.revokeObjectURL(li._els.objectUrl);
+      li._els.objectUrl = null;
+      li._els.audio = null;
+    }
+  }
+}
 
 async function loadRecordings() {
   if (!state.storageReady) return;
@@ -168,6 +169,8 @@ async function loadRecordings() {
     return;
   }
 
+  stopCurrentPlayback();
+  revokeListObjectURLs();
   els.list.innerHTML = '';
   if (records.length === 0) {
     renderEmptyState(els.list);
@@ -200,6 +203,34 @@ function stopCurrentPlayback() {
   state.currentPlayingLi = null;
 }
 
+function ensureAudio(record, li) {
+  let audio = li._els.audio;
+  if (audio) return audio;
+
+  const url = URL.createObjectURL(record.blob);
+  audio = new Audio(url);
+  audio.preload = 'metadata';
+  li._els.audio = audio;
+  li._els.objectUrl = url;
+
+  audio.addEventListener('timeupdate', () => {
+    updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
+  });
+  audio.addEventListener('loadedmetadata', () => {
+    updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
+  });
+  audio.addEventListener('ended', () => {
+    setPlayButtonState(li, false);
+    updatePlaybackProgress(li, 0, record.duration || audio.duration || 0);
+    audio.currentTime = 0;
+  });
+  audio.addEventListener('error', () => {
+    showToast('This recording could not be played back. It may be corrupted.', { isError: true });
+    setPlayButtonState(li, false);
+  });
+  return audio;
+}
+
 function handleTogglePlay(record, li) {
   const isThisPlaying = state.currentPlayingLi === li && state.currentAudioEl && !state.currentAudioEl.paused;
   if (isThisPlaying) {
@@ -213,27 +244,7 @@ function handleTogglePlay(record, li) {
     stopCurrentPlayback();
   }
 
-  let audio = li._els.audio;
-  if (!audio) {
-    const url = URL.createObjectURL(record.blob);
-    audio = new Audio(url);
-    audio.preload = 'metadata';
-    li._els.audio = audio;
-    li._els.objectUrl = url;
-
-    audio.addEventListener('timeupdate', () => {
-      updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
-    });
-    audio.addEventListener('ended', () => {
-      setPlayButtonState(li, false);
-      updatePlaybackProgress(li, 0, record.duration || audio.duration || 0);
-      audio.currentTime = 0;
-    });
-    audio.addEventListener('error', () => {
-      showToast('This recording could not be played back. It may be corrupted.', { isError: true });
-      setPlayButtonState(li, false);
-    });
-  }
+  const audio = ensureAudio(record, li);
 
   state.currentAudioEl = audio;
   state.currentPlayingLi = li;
@@ -246,11 +257,23 @@ function handleTogglePlay(record, li) {
   });
 }
 
-function handleSeek(record, li, percent) {
-  const audio = li._els.audio;
-  const duration = record.duration || (audio && audio.duration) || 0;
-  if (!audio || !duration) return;
-  audio.currentTime = (percent / 100) * duration;
+function handleSeek(record, li, sliderValue) {
+  // Slider uses max=1000 for finer granularity on long recordings.
+  const audio = ensureAudio(record, li);
+  const max = Number(li._els.progress.max || 1000);
+  const duration = record.duration || audio.duration || 0;
+  if (!Number.isFinite(duration) || duration <= 0) return;
+  const fraction = Math.min(1, Math.max(0, Number(sliderValue) / max));
+  // If metadata isn't loaded yet, defer the seek until it is.
+  if (!Number.isFinite(audio.duration) || audio.duration === 0) {
+    audio.addEventListener('loadedmetadata', () => {
+      audio.currentTime = fraction * (record.duration || audio.duration || 0);
+      updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
+    }, { once: true });
+    updatePlaybackProgress(li, fraction * duration, duration);
+    return;
+  }
+  audio.currentTime = fraction * duration;
   updatePlaybackProgress(li, audio.currentTime, duration);
 }
 
@@ -341,7 +364,21 @@ function wireStaticControls() {
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    await navigator.serviceWorker.register('./sw.js');
+    const registration = await navigator.serviceWorker.register('./sw.js');
+    // Notify when a new version is ready. We don't auto-reload (that could
+    // interrupt a recording) — the user reloads when convenient.
+    registration.addEventListener('updatefound', () => {
+      const worker = registration.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          showToast('A new version is available — reload to update.');
+        }
+      });
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      showToast('App updated — reload to use the new version.');
+    });
   } catch (err) {
     console.warn('Service worker registration failed:', err);
   }

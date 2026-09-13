@@ -2,11 +2,10 @@
 // Recordings themselves live in IndexedDB (see js/db.js), never in this
 // cache — this worker is only responsible for the static UI shell.
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `voicenotes-shell-${CACHE_VERSION}`;
 
 const SHELL_ASSETS = [
-  './',
   './index.html',
   './manifest.webmanifest',
   './css/styles.css',
@@ -24,11 +23,19 @@ const SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  // Cache assets individually so one missing/failed file doesn't fail the
+  // whole install (cache.addAll is all-or-nothing).
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.all(SHELL_ASSETS.map(async (url) => {
+      try {
+        await cache.add(url);
+      } catch (err) {
+        console.warn('Service worker: failed to cache', url, err);
+      }
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -54,30 +61,43 @@ self.addEventListener('fetch', (event) => {
   // Navigations: try the network first for freshness, fall back to the
   // cached shell so the app still opens with no connection.
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response && response.ok) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
-          return response;
-        })
-        .catch(() => caches.match('./index.html'))
-    );
+          caches.open(CACHE_NAME)
+            .then((cache) => cache.put('./index.html', copy))
+            .catch(() => {});
+        }
+        return response;
+      } catch {
+        const cached = await caches.match('./index.html');
+        if (cached) return cached;
+        throw new Error('Offline and no cached shell available.');
+      }
+    })());
     return;
   }
 
   // Static assets: cache-first, then network, caching new same-origin
   // responses as they're fetched so the shell stays complete over time.
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        if (response && response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-        }
-        return response;
-      }).catch(() => cached);
-    })
-  );
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    try {
+      const response = await fetch(request);
+      if (response && response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME)
+          .then((cache) => cache.put(request, copy))
+          .catch(() => {});
+      }
+      return response;
+    } catch (err) {
+      // Offline and never cached: propagate the network error instead of
+      // resolving with `undefined` (which would throw an opaque error).
+      throw err;
+    }
+  })());
 });

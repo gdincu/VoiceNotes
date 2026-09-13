@@ -1,6 +1,6 @@
 // db.js — IndexedDB storage layer for VoiceNotes.
 // Isolated so all persistence logic (and its failure modes) lives in one place.
-// Public API: saveRecording, getRecordings, getRecording, deleteRecording, clearRecordings.
+// Public API: saveRecording, getRecordings, deleteRecording.
 
 const DB_NAME = 'voicenotes-db';
 const DB_VERSION = 1;
@@ -99,20 +99,14 @@ export async function saveRecording(record) {
 
 /**
  * @returns {Promise<Array>} all recordings, newest first.
+ * Uses the `createdAt` index so ordering happens in IndexedDB
+ * instead of sorting potentially large record sets in JS.
  */
 export async function getRecordings() {
   const store = await tx('readonly');
-  const all = await requestToPromise(store.getAll());
-  return all.sort((a, b) => b.createdAt - a.createdAt);
-}
-
-/**
- * @param {string} id
- * @returns {Promise<Object|undefined>}
- */
-export async function getRecording(id) {
-  const store = await tx('readonly');
-  return requestToPromise(store.get(id));
+  const all = await requestToPromise(store.index('createdAt').getAll());
+  // Index returns ascending; newest-first is what the UI wants.
+  return all.reverse();
 }
 
 /**
@@ -121,29 +115,4 @@ export async function getRecording(id) {
 export async function deleteRecording(id) {
   const store = await tx('readwrite');
   return requestToPromise(store.delete(id));
-}
-
-/**
- * Remove every recording. Used only for explicit "clear all" actions.
- */
-export async function clearRecordings() {
-  const store = await tx('readwrite');
-  return requestToPromise(store.clear());
-}
-
-/**
- * Best-effort check of how full device storage is, for surfacing low-space
- * warnings before a save fails outright. Not supported everywhere.
- * @returns {Promise<{usage:number, quota:number}|null>}
- */
-export async function getStorageEstimate() {
-  try {
-    if (navigator.storage && navigator.storage.estimate) {
-      const { usage, quota } = await navigator.storage.estimate();
-      return { usage, quota };
-    }
-  } catch {
-    // Ignore — this is purely advisory.
-  }
-  return null;
 }

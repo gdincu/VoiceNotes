@@ -5,13 +5,12 @@
 export class WaveformVisualizer {
   /**
    * @param {HTMLCanvasElement} canvas
-   * @param {{lineColor?:string, idleColor?:string}} [opts]
+   * @param {{lineColor?:string}} [opts] Optional override; defaults to CSS --accent.
    */
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
     this.ctx2d = canvas.getContext('2d');
-    this.lineColor = opts.lineColor || '#c43e2e';
-    this.idleColor = opts.idleColor || 'rgba(150,150,150,0.3)';
+    this.lineColorOverride = opts.lineColor || null;
 
     this.audioCtx = null;
     this.analyser = null;
@@ -35,13 +34,27 @@ export class WaveformVisualizer {
     }
   }
 
+  _resolveAccentColor() {
+    if (this.lineColorOverride) return this.lineColorOverride;
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      if (v) return v;
+    } catch {
+      // Ignore — fall through to default.
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? '#e5624f'
+      : '#c43e2e';
+  }
+
   /**
    * Begin visualizing a live microphone stream.
    * @param {MediaStream} stream
    */
   async start(stream) {
-    this.stop(); 
+    this.stop();
     this._resizeCanvas();
+    this.lineColor = this._resolveAccentColor();
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     this.audioCtx = new AudioContextClass();
@@ -90,19 +103,6 @@ export class WaveformVisualizer {
     ctx.lineTo(width, height / 2);
     ctx.stroke();
   };
-
-  /** Draws a flat idle line — used before recording starts / after it ends. */
-  drawIdle() {
-    const { width, height } = this.canvas;
-    const ctx = this.ctx2d;
-    ctx.clearRect(0, 0, width, height);
-    ctx.strokeStyle = this.idleColor;
-    ctx.lineWidth = Math.max(2, height * 0.015);
-    ctx.beginPath();
-    ctx.moveTo(0, height / 2);
-    ctx.lineTo(width, height / 2);
-    ctx.stroke();
-  }
 
   /** Stops the render loop and tears down the audio graph. Safe to call repeatedly. */
   stop() {

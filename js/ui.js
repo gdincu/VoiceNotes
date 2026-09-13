@@ -61,7 +61,7 @@ export function renderRecordingItem(record, handlers) {
         ${icon('play')}
       </button>
       <div class="rec-card__progress-wrap">
-        <input type="range" class="rec-card__progress" min="0" max="100" value="0"
+        <input type="range" class="rec-card__progress" min="0" max="1000" value="0"
           aria-label="Playback position" data-role="progress" />
         <div class="rec-card__time">
           <span data-role="current-time">0:00</span>
@@ -81,13 +81,17 @@ export function renderRecordingItem(record, handlers) {
   const meta = li.querySelector('[data-role="meta"]');
 
   playBtn.addEventListener('click', () => handlers.onTogglePlay(record, li));
+  progress.addEventListener('pointerdown', () => { li._els.scrubbing = true; });
+  progress.addEventListener('pointerup', () => { li._els.scrubbing = false; });
+  progress.addEventListener('pointercancel', () => { li._els.scrubbing = false; });
+  progress.addEventListener('change', () => { li._els.scrubbing = false; });
   progress.addEventListener('input', () => handlers.onSeek(record, li, Number(progress.value)));
   renameBtn.addEventListener('click', () => handlers.onRename(record, li));
   if (shareBtn) shareBtn.addEventListener('click', () => handlers.onShare(record));
   if (downloadBtn) downloadBtn.addEventListener('click', () => handlers.onDownload(record));
   deleteBtn.addEventListener('click', () => handlers.onDeleteRequest(record, li));
 
-  li._els = { playBtn, progress, currentTimeEl, meta };
+  li._els = { playBtn, progress, currentTimeEl, meta, audio: null, objectUrl: null, scrubbing: false };
   return li;
 }
 
@@ -128,8 +132,9 @@ export function setPlayButtonState(li, isPlaying) {
 
 export function updatePlaybackProgress(li, currentTime, duration) {
   const { progress, currentTimeEl } = li._els;
-  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
-  if (!progress.matches(':active')) progress.value = String(pct);
+  const pos = duration > 0 ? (currentTime / duration) * Number(progress.max || 1000) : 0;
+  const isScrubbing = li._els.scrubbing || document.activeElement === progress;
+  if (!isScrubbing) progress.value = String(Math.round(pos));
   currentTimeEl.textContent = formatDuration(currentTime);
 }
 
@@ -165,7 +170,7 @@ export function showToast(message, { isError = false } = {}) {
 
 /**
  * Confirmation dialog for destructive actions. Uses the native <dialog>
- * element with a full manual fallback for browsers without it.
+ * element (supported by all evergreen browsers).
  * @returns {Promise<boolean>}
  */
 export function confirmDialog(message) {
@@ -191,19 +196,14 @@ export function confirmDialog(message) {
     cancelBtn.addEventListener('click', onNo);
     dialog.addEventListener('cancel', onCancel);
 
-    if (typeof dialog.showModal === 'function') {
-      dialog.showModal();
-    } else {
-      // Extremely old browsers: fall back to a blocking confirm().
-      cleanup(window.confirm(message)); // eslint-disable-line no-alert
-    }
+    dialog.showModal();
   });
 }
 
 /**
  * Text-entry dialog used both to optionally name a recording right after
  * saving it, and to rename an existing one later. Uses the native
- * <dialog> element with a window.prompt() fallback for browsers without it.
+ * <dialog> element (supported by all evergreen browsers).
  *
  * @param {{heading:string, initialValue?:string, placeholder?:string, confirmLabel?:string}} opts
  * @returns {Promise<string|null>} the trimmed name, or null if the user
@@ -242,15 +242,9 @@ export function promptForName({ heading, initialValue = '', placeholder = '', co
     input.addEventListener('keydown', onKeydown);
     dialog.addEventListener('cancel', onDialogCancel);
 
-    if (typeof dialog.showModal === 'function') {
-      dialog.showModal();
-      input.focus();
-      input.select();
-    } else {
-      // Extremely old browsers: fall back to a blocking prompt().
-      const value = window.prompt(heading, initialValue); // eslint-disable-line no-alert
-      cleanup(value === null ? null : value.trim());
-    }
+    dialog.showModal();
+    input.focus();
+    input.select();
   });
 }
 

@@ -63,8 +63,6 @@ button {
   color: inherit;
 }
 
-a { color: inherit; }
-
 :focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
@@ -389,12 +387,6 @@ a { color: inherit; }
 
 .cancel-btn:hover { color: var(--ink); }
 
-.recording-error {
-  color: var(--danger);
-  font-size: 0.9rem;
-  max-width: 320px;
-}
-
 /* ---------- Toast ---------- */
 
 .toast {
@@ -421,8 +413,15 @@ a { color: inherit; }
 }
 
 .toast--error {
-  background: var(--danger);
+  background: #8f2b22;
   color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .toast--error {
+    background: #f0a49a;
+    color: #2b0f0c;
+  }
 }
 
 /* ---------- Confirm dialog ---------- */
@@ -445,6 +444,7 @@ dialog::backdrop {
 .dialog__message {
   margin: 0 0 20px;
   font-size: 1rem;
+  font-weight: 600;
 }
 
 .name-input {

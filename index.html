@@ -12,6 +12,7 @@
 
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="VoiceNotes" />
@@ -52,13 +53,11 @@
         <span>Recording</span>
       </div>
 
-      <div id="recording-timer" class="recording-timer" aria-live="off">0:00</div>
+      <div id="recording-timer" class="recording-timer">0:00</div>
 
       <div class="waveform-wrap">
         <canvas id="waveform-canvas" aria-hidden="true"></canvas>
       </div>
-
-      <p id="recording-error" class="recording-error" role="alert" hidden></p>
 
       <div class="recording-controls">
         <button id="stop-btn" class="stop-btn" type="button" aria-label="Stop and save recording">
@@ -71,8 +70,8 @@
   </div>
 
   <!-- Delete confirmation dialog -->
-  <dialog id="confirm-dialog">
-    <p class="dialog__message" data-role="confirm-message">Delete this recording?</p>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-dialog-title">
+    <h2 id="confirm-dialog-title" class="dialog__message" data-role="confirm-message">Delete this recording?</h2>
     <div class="dialog__actions">
       <button type="button" class="btn" data-action="confirm-no">Cancel</button>
       <button type="button" class="btn btn--danger" data-action="confirm-yes">Delete</button>
@@ -80,8 +79,8 @@
   </dialog>
 
   <!-- Name / rename recording dialog -->
-  <dialog id="name-dialog">
-    <p class="dialog__message" data-role="name-heading">Name this recording</p>
+  <dialog id="name-dialog" aria-labelledby="name-dialog-title">
+    <h2 id="name-dialog-title" class="dialog__message" data-role="name-heading">Name this recording</h2>
     <input
       type="text"
       class="name-input"

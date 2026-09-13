@@ -71,7 +71,6 @@ export class Recorder {
     this.chunks = [];
     this.mimeType = '';
     this.startedAt = 0;
-    this._stopResolve = null;
   }
 
   get isRecording() {

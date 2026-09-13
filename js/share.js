@@ -34,8 +34,14 @@ export function fileNameFor(record = {}) {
     stamp = String(Date.now());
   }
 
-  // Preserve unicode characters while sanitizing characters invalid in filenames
-  const title = record.title ? String(record.title).replace(/[\\/:*?"<>|]/g, '_').trim() : '';
+  // Preserve unicode characters while sanitizing characters invalid in filenames,
+  // stripping control chars, leading dots (hidden files), and capping length.
+  const rawTitle = record.title ? String(record.title) : '';
+  const title = rawTitle
+    .replace(/[\\/:*?"<>|\x00-\x1F]/g, '_')
+    .replace(/^\.+/, '_')
+    .trim()
+    .slice(0, 100);
   const base = title || `voicenote-${stamp}`;
   const ext = extensionForMime(getCleanMimeType(record));
   return `${base}.${ext}`;
