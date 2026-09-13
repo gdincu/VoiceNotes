@@ -39,20 +39,24 @@ export class WaveformVisualizer {
    * Begin visualizing a live microphone stream.
    * @param {MediaStream} stream
    */
-  start(stream) {
-    this.stop(); // defensive: clean up any previous graph first
+  async start(stream) {
+    this.stop(); 
+    this._resizeCanvas();
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     this.audioCtx = new AudioContextClass();
+    
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume();
+    }
+
+    // Initialize and connect nodes only after the context is guaranteed running
     this.analyser = this.audioCtx.createAnalyser();
-    // A moderate FFT size keeps CPU/battery use low while still looking smooth.
     this.analyser.fftSize = 1024;
     this.analyser.smoothingTimeConstant = 0.85;
 
     this.sourceNode = this.audioCtx.createMediaStreamSource(stream);
     this.sourceNode.connect(this.analyser);
-    // Intentionally not connected to audioCtx.destination — we only read
-    // data from the analyser, we never want to play the mic back out loud.
 
     this.dataArray = new Uint8Array(this.analyser.fftSize);
     this._draw();
