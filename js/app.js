@@ -203,6 +203,19 @@ function stopCurrentPlayback() {
   state.currentPlayingLi = null;
 }
 
+function effectiveDuration(record, audio) {
+  // Prefer the real media duration when known. MediaRecorder webm blobs
+  // commonly report Infinity (or NaN before metadata loads), so fall back
+  // to the wall-clock duration stored at record time in those cases.
+  if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+    return audio.duration;
+  }
+  if (Number.isFinite(record.duration) && record.duration > 0) {
+    return record.duration;
+  }
+  return 0;
+}
+
 function ensureAudio(record, li) {
   let audio = li._els.audio;
   if (audio) return audio;
@@ -214,15 +227,15 @@ function ensureAudio(record, li) {
   li._els.objectUrl = url;
 
   audio.addEventListener('timeupdate', () => {
-    updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
+    updatePlaybackProgress(li, audio.currentTime, effectiveDuration(record, audio));
   });
   audio.addEventListener('loadedmetadata', () => {
-    updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
+    updatePlaybackProgress(li, audio.currentTime, effectiveDuration(record, audio));
   });
   audio.addEventListener('ended', () => {
     setPlayButtonState(li, false);
-    updatePlaybackProgress(li, 0, record.duration || audio.duration || 0);
-    audio.currentTime = 0;
+    updatePlaybackProgress(li, 0, effectiveDuration(record, audio));
+    try { audio.currentTime = 0; } catch { /* ignore seek errors on teardown */ }
   });
   audio.addEventListener('error', () => {
     showToast('This recording could not be played back. It may be corrupted.', { isError: true });
@@ -261,20 +274,35 @@ function handleSeek(record, li, sliderValue) {
   // Slider uses max=1000 for finer granularity on long recordings.
   const audio = ensureAudio(record, li);
   const max = Number(li._els.progress.max || 1000);
-  const duration = record.duration || audio.duration || 0;
+  const duration = effectiveDuration(record, audio);
   if (!Number.isFinite(duration) || duration <= 0) return;
   const fraction = Math.min(1, Math.max(0, Number(sliderValue) / max));
-  // If metadata isn't loaded yet, defer the seek until it is.
-  if (!Number.isFinite(audio.duration) || audio.duration === 0) {
-    audio.addEventListener('loadedmetadata', () => {
-      audio.currentTime = fraction * (record.duration || audio.duration || 0);
-      updatePlaybackProgress(li, audio.currentTime, record.duration || audio.duration || 0);
-    }, { once: true });
-    updatePlaybackProgress(li, fraction * duration, duration);
-    return;
+  const target = fraction * duration;
+  // Update the time label immediately with the TARGET time. Reading back
+  // audio.currentTime here would return the stale pre-seek position because
+  // seeking is asynchronous.
+  updatePlaybackProgress(li, target, duration);
+  try {
+    audio.currentTime = target;
+  } catch (err) {
+    console.warn('Seek failed:', err);
   }
-  audio.currentTime = fraction * duration;
-  updatePlaybackProgress(li, audio.currentTime, duration);
+  // If metadata isn't loaded yet (readyState 0, or duration still came from
+  // the stored record), re-apply the slider position once it arrives so a
+  // pre-playback scrub isn't lost. The live `input` seek above already
+  // covers the common during-playback case, including Infinity-duration webm
+  // blobs where audio.duration is never finite.
+  if (audio.readyState === 0) {
+    const reapply = () => {
+      const d = effectiveDuration(record, audio);
+      if (d > 0) {
+        const f = Math.min(1, Math.max(0, Number(li._els.progress.value) / max));
+        try { audio.currentTime = f * d; } catch { /* ignore */ }
+        updatePlaybackProgress(li, f * d, d);
+      }
+    };
+    audio.addEventListener('loadedmetadata', reapply, { once: true });
+  }
 }
 
 async function handleRename(record, li) {

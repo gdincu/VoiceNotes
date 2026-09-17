@@ -81,11 +81,27 @@ export function renderRecordingItem(record, handlers) {
   const meta = li.querySelector('[data-role="meta"]');
 
   playBtn.addEventListener('click', () => handlers.onTogglePlay(record, li));
-  progress.addEventListener('pointerdown', () => { li._els.scrubbing = true; });
-  progress.addEventListener('pointerup', () => { li._els.scrubbing = false; });
-  progress.addEventListener('pointercancel', () => { li._els.scrubbing = false; });
-  progress.addEventListener('change', () => { li._els.scrubbing = false; });
+  // While the user is actively dragging the thumb we must not let
+  // timeupdate overwrite the slider position, or the thumb snaps back and
+  // seeking feels broken. `change` commits the final position (covers
+  // keyboard + click-to-jump where `input` may be throttled).
+  const endScrub = () => { li._els.scrubbing = false; };
+  progress.addEventListener('pointerdown', () => {
+    li._els.scrubbing = true;
+    // If the pointer is released off-element, the input's own pointerup may
+    // not fire — the window fallback guarantees the slider resumes
+    // auto-progress instead of freezing.
+    window.addEventListener('pointerup', endScrub, { once: true });
+    window.addEventListener('pointercancel', endScrub, { once: true });
+  });
+  progress.addEventListener('pointerup', endScrub);
+  progress.addEventListener('pointercancel', endScrub);
+  progress.addEventListener('blur', endScrub);
   progress.addEventListener('input', () => handlers.onSeek(record, li, Number(progress.value)));
+  progress.addEventListener('change', () => {
+    endScrub();
+    handlers.onSeek(record, li, Number(progress.value));
+  });
   renameBtn.addEventListener('click', () => handlers.onRename(record, li));
   if (shareBtn) shareBtn.addEventListener('click', () => handlers.onShare(record));
   if (downloadBtn) downloadBtn.addEventListener('click', () => handlers.onDownload(record));
@@ -133,8 +149,10 @@ export function setPlayButtonState(li, isPlaying) {
 export function updatePlaybackProgress(li, currentTime, duration) {
   const { progress, currentTimeEl } = li._els;
   const pos = duration > 0 ? (currentTime / duration) * Number(progress.max || 1000) : 0;
-  const isScrubbing = li._els.scrubbing || document.activeElement === progress;
-  if (!isScrubbing) progress.value = String(Math.round(pos));
+  // Only suppress programmatic updates while actively scrubbing. Do NOT gate
+  // on document.activeElement: the slider keeps focus after a drag, which
+  // would otherwise freeze auto-progress for the rest of playback.
+  if (!li._els.scrubbing) progress.value = String(Math.round(pos));
   currentTimeEl.textContent = formatDuration(currentTime);
 }
 
