@@ -7,6 +7,13 @@ import { Recorder, isRecordingSupported, describeMediaError } from './recorder.j
 import { WaveformVisualizer } from './waveform.js';
 import { shareRecording, downloadRecording, isFileShareSupported } from './share.js';
 import {
+  getEnhancePreference,
+  setEnhancePreference,
+  isEnhancementSupported,
+  enhanceBlob,
+  prewarmEnhancer,
+} from './enhance.js';
+import {
   renderRecordingItem, renderEmptyState, showToast, confirmDialog, promptForName,
   setPlayButtonState, updatePlaybackProgress, updateRecordingCardMeta,
   formatDuration, formatTimestamp,
@@ -15,6 +22,8 @@ import {
 const els = {
   recordBtn: document.getElementById('record-btn'),
   recordBtnLabel: document.getElementById('record-btn-label'),
+  enhanceToggle: document.getElementById('enhance-toggle'),
+  enhanceStatus: document.getElementById('enhance-status'),
   homeView: document.getElementById('home-view'),
   recordingView: document.getElementById('recording-view'),
   timer: document.getElementById('recording-timer'),
@@ -87,29 +96,83 @@ async function stopRecording() {
 
   teardownRecordingView();
 
+  // Optional on-device cleanup (Desert Ant Clear): denoise + dereverb +
+  // loudness-normalize before saving. Best-effort — any failure falls back
+  // to the raw recording so a note is never lost because of enhancement.
+  let saveBlob = result.blob;
+  let saveMimeType = result.mimeType;
+  let saveDuration = result.duration;
+  let enhanced = false;
+  if (shouldEnhance()) {
+    try {
+      setEnhanceStatus('Cleaning up audio…', 'busy');
+      const out = await enhanceBlob(result.blob, {
+        onProgress: (f) => {
+          if (f > 0 && f < 1) setEnhanceStatus(`Downloading cleanup model ${Math.round(f * 100)}%…`, 'busy');
+          else setEnhanceStatus('Cleaning up audio…', 'busy');
+        },
+      });
+      saveBlob = out.blob;
+      saveMimeType = out.mimeType;
+      saveDuration = out.duration;
+      enhanced = true;
+      setEnhanceStatus(enhancedStatusText(out), '');
+    } catch (err) {
+      console.warn('Enhancement failed, keeping original:', err);
+      if (err && err.code === 'enhance-load-failed') {
+        setEnhanceStatus('Cleanup needs internet the first time to download the model.', 'error');
+        showToast('Cleanup skipped — connect once to download the model.', { isError: true });
+      } else {
+        setEnhanceStatus('', '');
+        showToast('Cleanup failed — saved the original recording.', { isError: true });
+      }
+    }
+  }
+
   // Naming is optional — leaving it blank (or cancelling) keeps the default
   // placeholder behavior of showing the date/time instead of a custom title.
   const createdAt = Date.now();
   const name = await promptForName({
-    heading: 'Save recording',
+    heading: enhanced ? 'Save cleaned recording' : 'Save recording',
     placeholder: formatTimestamp(createdAt),
     confirmLabel: 'Save',
   });
 
   try {
     await db.saveRecording({
-      blob: result.blob,
-      mimeType: result.mimeType,
-      duration: result.duration,
+      blob: saveBlob,
+      mimeType: saveMimeType,
+      duration: saveDuration,
       createdAt,
       title: name || '',
+      enhanced,
     });
-    showToast('Recording saved.');
+    showToast(enhanced ? 'Cleaned recording saved.' : 'Recording saved.');
+    if (enhanced) setEnhanceStatus('', '');
     await loadRecordings();
   } catch (err) {
     console.error(err);
     showToast(err.message || 'Could not save the recording on this device.', { isError: true });
   }
+}
+
+function shouldEnhance() {
+  if (!els.enhanceToggle) return getEnhancePreference();
+  return els.enhanceToggle.checked;
+}
+
+function setEnhanceStatus(text, tone) {
+  if (!els.enhanceStatus) return;
+  els.enhanceStatus.textContent = text || '';
+  els.enhanceStatus.classList.toggle('enhance-status--busy', tone === 'busy');
+  els.enhanceStatus.classList.toggle('enhance-status--error', tone === 'error');
+}
+
+function enhancedStatusText(out) {
+  if (out && Number.isFinite(out.realtimeFactor) && out.realtimeFactor > 0) {
+    return `Cleaned (${out.realtimeFactor.toFixed(1)}× realtime)`;
+  }
+  return 'Cleaned ✓';
 }
 
 function cancelRecording() {
@@ -383,6 +446,20 @@ function wireStaticControls() {
   els.stopBtn.addEventListener('click', stopRecording);
   els.cancelBtn.addEventListener('click', cancelRecording);
 
+  if (els.enhanceToggle) {
+    els.enhanceToggle.checked = getEnhancePreference();
+    els.enhanceToggle.disabled = !isEnhancementSupported();
+    if (!isEnhancementSupported()) {
+      const label = els.enhanceToggle.closest('.enhance-toggle');
+      if (label) label.title = 'Audio cleanup is not supported in this browser.';
+    }
+    els.enhanceToggle.addEventListener('change', () => {
+      setEnhancePreference(els.enhanceToggle.checked);
+      setEnhanceStatus('', '');
+      if (els.enhanceToggle.checked) prewarmEnhancer();
+    });
+  }
+
   // Keyboard: Escape cancels an in-progress recording.
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.recorder.isRecording) cancelRecording();
@@ -428,6 +505,10 @@ async function init() {
   } else {
     await loadRecordings();
   }
+
+  // Prewarm the cleanup model in the background (downloads weights on first
+  // run so stopping a recording doesn't pay load latency). Never blocks UI.
+  try { prewarmEnhancer(); } catch { /* best-effort */ }
 
   await registerServiceWorker();
 }

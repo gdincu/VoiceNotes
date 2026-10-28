@@ -122,10 +122,11 @@ function metaMarkup(record) {
   const hasTitle = !!(record.title && record.title.trim());
   const primary = hasTitle ? escapeHtml(record.title.trim()) : timestamp;
   const secondary = hasTitle ? `<span class="rec-card__date rec-card__date--sub">${timestamp}</span>` : '';
+  const badge = record.enhanced ? `<span class="rec-card__badge">Cleaned</span>` : '';
   return `
     <span class="rec-card__date">${primary}</span>
     ${secondary}
-    <span class="rec-card__duration">${formatDuration(record.duration)}</span>
+    <span class="rec-card__duration">${formatDuration(record.duration)}${badge ? ` · ${badge}` : ''}</span>
   `;
 }
 

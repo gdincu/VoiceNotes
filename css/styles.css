@@ -151,6 +151,37 @@ button {
   color: var(--ink-muted);
 }
 
+.enhance-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 8px;
+  border-radius: var(--radius-full);
+}
+
+.enhance-toggle:hover { color: var(--ink); }
+
+.enhance-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.enhance-status {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  min-height: 1.2em;
+  text-align: center;
+}
+
+.enhance-status--busy { color: var(--accent); }
+.enhance-status--error { color: var(--danger); }
+
 .recordings-section {
   flex: 1;
   min-height: 0;
@@ -223,6 +254,18 @@ button {
   font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
   color: var(--ink-muted);
+}
+
+.rec-card__badge {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  vertical-align: 1px;
 }
 
 .rec-card__actions {

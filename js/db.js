@@ -68,7 +68,7 @@ function requestToPromise(req) {
 
 /**
  * Persist a recording.
- * @param {{id?:string, blob:Blob, mimeType:string, createdAt?:number, duration:number, title?:string}} record
+ * @param {{id?:string, blob:Blob, mimeType:string, createdAt?:number, duration:number, title?:string, enhanced?:boolean}} record
  * @returns {Promise<string>} the record's id
  */
 export async function saveRecording(record) {
@@ -83,6 +83,7 @@ export async function saveRecording(record) {
     createdAt: record.createdAt || Date.now(),
     duration: Number.isFinite(record.duration) ? record.duration : 0,
     title: record.title || '',
+    enhanced: !!record.enhanced,
   };
 
   const store = await tx('readwrite');
