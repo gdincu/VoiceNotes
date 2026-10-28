@@ -1,17 +1,19 @@
 # VoiceNotes
 
 A minimalist, installable, offline-first audio journal. Record voice memos
-with one tap, watch a live waveform while you talk, and manage everything
+with one tap, clean them up on-device, and manage everything
 from a simple list — all stored **only on your device**.
 
-No backend. No accounts. No analytics. No network requests are made to
-record, save, or play a note.
+No backend. No accounts. No analytics. Audio never leaves your device:
+cleanup runs locally with the [Clear](https://desertant.com/models/clear/)
+speech-enhancement model.
 
 ---
 
 ## Features
 
 - One-tap recording with a large, obvious record button
+- Optional one-tap cleanup: noise + room echo removal, on-device (Clear model)
 - Real-time waveform visualization while recording (Web Audio API)
 - Playback with progress, seek, and duration
 - Share a recording as an audio file (Web Share API) or download it
@@ -34,6 +36,7 @@ voicenotes/
 ├── js/
 │   ├── app.js            # Orchestration: state, event wiring, playback
 │   ├── recorder.js        # getUserMedia + MediaRecorder wrapper
+│   ├── enhance.js         # On-device cleanup via Clear (decode → enhance → WAV)
 │   ├── waveform.js        # AudioContext + AnalyserNode + canvas rendering
 │   ├── db.js              # IndexedDB storage layer (CRUD for recordings)
 │   ├── share.js           # Web Share API + download/export fallback
@@ -109,6 +112,12 @@ all recordings live in IndexedDB on the device.
   chosen at runtime via `MediaRecorder.isTypeSupported()` (preferring
   `audio/webm;codecs=opus`, falling back through ogg/mp4/mpeg as needed).
   Recorded chunks are combined into a `Blob` when you stop.
+- **Cleanup (optional, on by default)** — the recording is decoded,
+  enhanced locally with [Clear](https://desertant.com/models/clear/)
+  (denoise + dereverb + loudness normalize), and saved as WAV. Turn it off
+  with the "Clean up audio" checkbox. Needs internet once to download the
+  model (~24MB); fully offline after that. If cleanup fails, the original
+  recording is kept.
 - **Waveform** — while recording, a `MediaStreamAudioSourceNode` feeds an
   `AnalyserNode`; time-domain samples are drawn to a `<canvas>` every frame
   via `requestAnimationFrame`. The graph is fully torn down (audio context
@@ -164,6 +173,7 @@ gracefully — it never shows a control that doesn't work.
 ## Privacy
 
 - Recordings never leave the device — there is no server component at all.
+  Cleanup also runs on-device; only the first model download uses network.
 - The microphone is only accessed after you tap the record button, never
   on page load.
 - No accounts, cookies, analytics, or third-party scripts.
