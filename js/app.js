@@ -61,6 +61,9 @@ async function startRecording() {
   state.startInFlight = true;
   try {
     const stream = await state.recorder.start();
+    // While the user is talking, warm up the cleanup model in the
+    // background so stop-time enhancement rarely pays load latency.
+    try { prewarmEnhancer(); } catch { /* best-effort */ }
     enterRecordingView();
     state.visualizer = state.visualizer || new WaveformVisualizer(els.waveformCanvas);
     state.visualizer.start(stream);
@@ -157,6 +160,7 @@ async function stopRecording() {
 }
 
 function shouldEnhance() {
+  if (!isEnhancementSupported()) return false;
   if (!els.enhanceToggle) return getEnhancePreference();
   return els.enhanceToggle.checked;
 }
@@ -447,8 +451,9 @@ function wireStaticControls() {
   els.cancelBtn.addEventListener('click', cancelRecording);
 
   if (els.enhanceToggle) {
-    els.enhanceToggle.checked = getEnhancePreference();
-    els.enhanceToggle.disabled = !isEnhancementSupported();
+    const supported = isEnhancementSupported();
+    els.enhanceToggle.checked = supported && getEnhancePreference();
+    els.enhanceToggle.disabled = !supported;
     if (!isEnhancementSupported()) {
       const label = els.enhanceToggle.closest('.enhance-toggle');
       if (label) label.title = 'Audio cleanup is not supported in this browser.';
